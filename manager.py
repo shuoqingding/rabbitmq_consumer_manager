@@ -1,7 +1,7 @@
 import requests
 import time
 import threading
-
+from consumer import Consumer
 
 
 class RabbitmqAdmin(object):
@@ -31,7 +31,8 @@ class ConsumerManager(object):
         return non_empty_queues
 
     def create_consumer_for_queue(self, queue):
-        c = RabbitmqConsumer(callback_on_exit=remove_consumer)
+        amqp_url = 'amqp://guest:guest@localhost:5672/%2F'
+        c = Consumer(amqp_url, queue)
         c.setDaemon(True)
         c.start()
 
@@ -50,19 +51,6 @@ class ConsumerManager(object):
                     print "There is already a consumer for queue %s" % q
 
             time.sleep(5)
-
-
-class RabbitmqConsumer(threading.Thread):
-
-    # TODO: Add heartbeat?
-    def run(self, ):
-        consumer_name = self.getName()
-
-        for i in range(5):
-            print "Consumer %s Running..." % consumer_name
-            time.sleep(5)
-
-        print "Consumer %s Exited" % consumer_name
 
 
 if __name__ == "__main__":
