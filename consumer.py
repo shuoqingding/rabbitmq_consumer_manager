@@ -192,6 +192,8 @@ class Consumer(threading.Thread):
         self.stop_consuming()
         LOGGER.info('Consumer %s is stopped' % self.consumer_name)
 
+    def is_running(self):
+        return self._channel.is_open
 
 def main():
     url = 'amqp://guest:guest@localhost:5672/%2F'

@@ -135,7 +135,7 @@ class ConsumerManager(object):
 
                 # Create consumers for queues with ready message
                 if q['messages_ready'] > 0:
-                    if consumer is None or not consumer.is_alive():
+                    if consumer is None or not consumer.is_running():
                         LOGGER.info("Creating thread for queue %s", qname)
                         self.create_consumer_for_queue(qname)
 
