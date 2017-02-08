@@ -3,13 +3,12 @@
 import logging
 import pika
 import threading
+import time
 import conf
 
 
 LOGGER = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format=conf.LOG_FORMAT)
-
-CONN_TIMEOUT = 5  # seconds
 
 
 class Consumer(threading.Thread):
@@ -121,7 +120,7 @@ class Consumer(threading.Thread):
         LOGGER.info('Received message # %s from %s: %s',
                     basic_deliver.delivery_tag, properties.app_id, body)
         def work():
-            import time
+            LOGGER.info('Processing message...')
             time.sleep(10)
             self.acknowledge_message(basic_deliver.delivery_tag)
 
@@ -189,7 +188,13 @@ class Consumer(threading.Thread):
         """
         LOGGER.info('Consummer %s is stopping' % self.consumer_name)
         self._closing = True
-        self.stop_consuming()
+        try:
+            self.stop_consuming()
+        except (pika.exceptions.ConnectionClosed, pika.exceptions.ChannelClosed):
+            # The consumer should already be closed
+            # if the connection is closed.
+            LOGGER.warn("The connection is closed when stop consumer")
+
         LOGGER.info('Consumer %s is stopped' % self.consumer_name)
 
     def is_running(self):

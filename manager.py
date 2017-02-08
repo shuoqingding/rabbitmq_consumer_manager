@@ -50,6 +50,7 @@ class ConsumerManager(object):
     REFRESH_INTERVAL = 3  # seconds
 
     def __init__(self, vhost='/', conn_num=1):
+        # TODO: make consumer number per queue configurable
         self.consumer_by_queue = {}
         self.vhost = quote(vhost, safe='')
         self.amqp_url = 'amqp://%s:%s@%s:%s/%s' % (
@@ -128,7 +129,6 @@ class ConsumerManager(object):
 
                 # Clean consumers of empty queues
                 if q['messages'] == 0 and consumer is not None:
-                    # TODO: handle pika.exceptions.ConnectionClosed
                     LOGGER.info("Closing idle consumer for queue %s", qname)
                     self.consumer_by_queue[qname].stop()
                     del self.consumer_by_queue[qname]
