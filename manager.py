@@ -11,14 +11,20 @@ class RabbitmqAdmin(object):
     uname = 'guest'
     pwd = 'guest'
 
+    def __init__(self, ):
+        self.session = requests.Session()
+        self.session.auth = (self.uname, self.pwd)
+
     def list_queues(self, cols=None):
         cols = cols or []
         qs = '?columns=' + ','.join(cols)
 
-        res = requests.get(self.admin_url + '/queues' + qs,
-                           auth=(self.uname, self.pwd))
-        assert res.status_code == 200, "Request failed: %d" % res.status_code
+        # We don't hanlde session disconnection as it will be
+        # reconnected automaticlly
+        res = self.session.get(self.admin_url + '/queues' + qs)
+
         # TODO: handle failure
+        assert res.status_code == 200, "Request failed: %d" % res.status_code
         return res.json()
 
 
@@ -37,13 +43,16 @@ class ConsumerManager(object):
         # Create the connection pool
         for i in range(conn_num):
             conn = pika.SelectConnection(pika.URLParameters(self.amqp_url))
-            threading.Thread(target=conn.ioloop.start).start()
+            t = threading.Thread(target=conn.ioloop.start)
+            t.setDaemon(True)
+            t.start()
             self.conns.append(conn)
 
+        self.rabbitmq_admin = RabbitmqAdmin()
+
     def get_queues(self, ):
-        # TODO: use long-live connection
-        admin = RabbitmqAdmin()
-        return admin.list_queues(cols=['name', 'messages', 'messages_ready'])
+        return self.rabbitmq_admin.list_queues(cols=['name', 'messages',
+                                                     'messages_ready'])
 
     def create_consumer_for_queue(self, queue):
         # TODO: restart connection if closed
