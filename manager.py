@@ -14,10 +14,27 @@ logging.basicConfig(level=logging.INFO, format=conf.LOG_FORMAT)
 
 
 class OpenConnectionTimeoutException(Exception):
+    """
+    Raised if we take too long to open a rabbitmq connection.
+    """
+    pass
+
+
+class AdminAPIError(Exception):
+    """
+    Raised if unexpected behavior happens in a rabbitmq admin request.
+    """
+    pass
+
+
+class PermissionError(Exception):
     pass
 
 
 class RabbitmqAdmin(object):
+    """
+    Client for using RabbitMQ Management API.
+    """
     admin_url = 'http://%s:%s/api' % (conf.RABBITMQ_HOST,
                                       conf.RABBITMQ_ADMIN_PORT)
     uname = conf.RABBITMQ_USER_NAME
@@ -27,19 +44,26 @@ class RabbitmqAdmin(object):
         self.session = requests.Session()
         self.session.auth = (self.uname, self.pwd)
 
+    def _call(self, uri, querystring=''):
+        url = '%s/%s?%s' % (self.admin_url, uri, querystring)
+        res = self.session.get(url)
+        if res.status_code == requests.codes.unauthorized:
+            raise PermissionError()
+
+        return res
+
     def list_queues(self, cols=None):
         LOGGER.debug("Listing queues...")
         cols = cols or []
-        qs = '?columns=' + ','.join(cols)
+        qs = 'columns=' + ','.join(cols)
 
         # We don't hanlde session disconnection as it will be
         # reconnected automaticlly
-        res = self.session.get(self.admin_url + '/queues' + qs)
-
+        res = self._call('queues', qs)
         if res.status_code != requests.codes.ok:
             LOGGER.error("Request failed. status_code: %d, respond: %s", res.status_code, res.text)
             # TODO: handle failure
-            raise Exception()
+            raise AdminAPIError(res)
 
         LOGGER.debug("Result: %s" % res.text)
         return res.json()
