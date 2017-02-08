@@ -1,25 +1,34 @@
+import logging
 import pika
 import requests
 import threading
 import time
-
-from consumer import Consumer
 from urllib import quote
+
+import conf
+from consumer import Consumer
+
+
+LOGGER = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format=conf.LOG_FORMAT)
 
 
 class OpenConnectionTimeoutException(Exception):
     pass
 
+
 class RabbitmqAdmin(object):
-    admin_url = 'http://127.0.0.1:15672/api'
-    uname = 'guest'
-    pwd = 'guest'
+    admin_url = 'http://%s:%s/api' % (conf.RABBITMQ_HOST,
+                                      conf.RABBITMQ_ADMIN_PORT)
+    uname = conf.RABBITMQ_USER_NAME
+    pwd = conf.RABBITMQ_PASSWORD
 
     def __init__(self, ):
         self.session = requests.Session()
         self.session.auth = (self.uname, self.pwd)
 
     def list_queues(self, cols=None):
+        LOGGER.debug("Listing queues...")
         cols = cols or []
         qs = '?columns=' + ','.join(cols)
 
@@ -27,19 +36,29 @@ class RabbitmqAdmin(object):
         # reconnected automaticlly
         res = self.session.get(self.admin_url + '/queues' + qs)
 
-        # TODO: handle failure
-        assert res.status_code == 200, "Request failed: %d" % res.status_code
+        if res.status_code != requests.codes.ok:
+            LOGGER.error("Request failed. status_code: %d, respond: %s", res.status_code, res.text)
+            # TODO: handle failure
+            raise Exception()
+
+        LOGGER.debug("Result: %s" % res.text)
         return res.json()
 
 
 class ConsumerManager(object):
 
-    REFRESH_INTERVAL = 5  # seconds
+    REFRESH_INTERVAL = 3  # seconds
 
     def __init__(self, vhost='/', conn_num=1):
         self.consumer_by_queue = {}
         self.vhost = quote(vhost, safe='')
-        self.amqp_url = 'amqp://guest:guest@localhost:5672/' + self.vhost
+        self.amqp_url = 'amqp://%s:%s@%s:%s/%s' % (
+            conf.RABBITMQ_USER_NAME,
+            conf.RABBITMQ_PASSWORD,
+            conf.RABBITMQ_HOST,
+            conf.RABBITMQ_AMQP_PORT,
+            self.vhost,
+        )
 
         self.conn_num = conn_num
         self.conns = []
@@ -47,6 +66,7 @@ class ConsumerManager(object):
         self.rabbitmq_admin = RabbitmqAdmin()
 
         # Create the connection pool
+        LOGGER.info("Creating connection pool of size %d" % self.conn_num)
         for i in range(conn_num):
             conn = self.create_connection()
             self.conns.append(conn)
@@ -65,9 +85,11 @@ class ConsumerManager(object):
         while not conn.is_open:
             t = time.time() - start
             if t > warn_timeout:
-                print "It took too long to open the connection"
+                LOGGER.warn("It took too long to open connection")
             elif t > timeout:
+                LOGGER.error("Open connection timeout")
                 raise OpenConnectionTimeoutException()
+
             time.sleep(0.1)
 
         return conn
@@ -83,9 +105,11 @@ class ConsumerManager(object):
 
         # Restart the connection if it is closed
         if not conn.is_open:
+            LOGGER.warn("Connection closd, reconnectting...")
             conn = self.create_connection()
             self.conns[self.conn_index] = conn
 
+        # Sanity check
         assert conn.is_open, "Failed to create a connection"
 
         # Start a consumer thread
@@ -105,13 +129,14 @@ class ConsumerManager(object):
                 # Clean consumers of empty queues
                 if q['messages'] == 0 and consumer is not None:
                     # TODO: handle pika.exceptions.ConnectionClosed
+                    LOGGER.info("Closing idle consumer for queue %s", qname)
                     self.consumer_by_queue[qname].stop()
                     del self.consumer_by_queue[qname]
 
                 # Create consumers for queues with ready message
                 if q['messages_ready'] > 0:
-                    if consumer is None or not consumer.isAlive():
-                        print "Creating thread for queue %s" % qname
+                    if consumer is None or not consumer.is_alive():
+                        LOGGER.info("Creating thread for queue %s", qname)
                         self.create_consumer_for_queue(qname)
 
             time.sleep(self.REFRESH_INTERVAL)

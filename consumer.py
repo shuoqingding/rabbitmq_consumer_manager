@@ -3,11 +3,11 @@
 import logging
 import pika
 import threading
+import conf
 
-LOG_FORMAT = ('%(levelname) -10s %(asctime)s %(name) -30s %(funcName) '
-              '-35s %(lineno) -5d: %(message)s')
+
 LOGGER = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
+logging.basicConfig(level=logging.INFO, format=conf.LOG_FORMAT)
 
 CONN_TIMEOUT = 5  # seconds
 
